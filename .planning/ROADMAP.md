@@ -27,7 +27,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. User sees a brief "Copied!" confirmation on the button after generation
   4. A signed .msi installer is produced by CI and installs cleanly on Windows without SmartScreen blocking
   5. A notarized .dmg is produced by CI and opens cleanly on macOS without Gatekeeper blocking
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 01-01-PLAN.md — Scaffold Tauri 2 project and implement generate + auto-copy + visual confirmation (GEN-01 through GEN-05, DIST-03)
+- [ ] 01-02-PLAN.md — GitHub Actions CI pipeline with macOS and Windows signing (DIST-01, DIST-02)
 
 ### Phase 2: UX Polish
 **Goal**: The app window feels purpose-built — minimal chrome, stays on top when the user wants it
@@ -46,5 +49,5 @@ Phases execute in numeric order: 1 → 2
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Core App | 0/TBD | Not started | - |
+| 1. Core App | 0/2 | Not started | - |
 | 2. UX Polish | 0/TBD | Not started | - |
