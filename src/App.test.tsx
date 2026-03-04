@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, afterEach, describe, test, expect, vi } from "vitest";
-import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, cleanup, act } from "@testing-library/react";
 import { mockIPC, clearMocks } from "@tauri-apps/api/mocks";
 import { randomFillSync } from "crypto";
 
@@ -20,11 +20,9 @@ beforeAll(() => {
 beforeEach(() => {
   clearMocks();
   mockWriteText.mockClear();
-  vi.useFakeTimers();
 });
 
 afterEach(() => {
-  vi.useRealTimers();
   cleanup();
 });
 
@@ -58,7 +56,6 @@ describe("GEN-02: CUID2 displayed in monospace font", () => {
 
     await waitFor(() => {
       const cuidElement = screen.getByText(FAKE_CUID);
-      // The element or its parent should have font-mono class
       const hasFontMono =
         cuidElement.classList.contains("font-mono") ||
         cuidElement.closest(".font-mono") !== null;
@@ -82,6 +79,7 @@ describe("GEN-04: Auto-copy to clipboard on generation", () => {
 
 describe("GEN-05: Visual confirmation with Copied! text", () => {
   test("after clicking Generate, button text changes to Copied! then reverts after 1500ms", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     setupMockIPC();
     render(<App />);
 
@@ -92,11 +90,15 @@ describe("GEN-05: Visual confirmation with Copied! text", () => {
     });
 
     // Advance timers past the 1500ms timeout
-    vi.advanceTimersByTime(1500);
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+    });
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /generate/i })).toBeInTheDocument();
     });
+
+    vi.useRealTimers();
   });
 });
 
