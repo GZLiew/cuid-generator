@@ -9,17 +9,17 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Generation
 
-- [ ] **GEN-01**: User can generate a CUID2 by clicking a button
-- [ ] **GEN-02**: Generated CUID2 is displayed in a prominent monospace font
-- [ ] **GEN-03**: User can copy the CUID2 to clipboard with one click
-- [ ] **GEN-04**: CUID2 is auto-copied to clipboard on generation
-- [ ] **GEN-05**: User sees visual confirmation when ID is copied
+- [x] **GEN-01**: User can generate a CUID2 by clicking a button
+- [x] **GEN-02**: Generated CUID2 is displayed in a prominent monospace font
+- [x] **GEN-03**: User can copy the CUID2 to clipboard with one click
+- [x] **GEN-04**: CUID2 is auto-copied to clipboard on generation
+- [x] **GEN-05**: User sees visual confirmation when ID is copied
 
 ### Distribution
 
 - [ ] **DIST-01**: App builds as a Windows executable (.msi)
 - [ ] **DIST-02**: App builds as a macOS application (.dmg)
-- [ ] **DIST-03**: App works fully offline with no network dependencies
+- [x] **DIST-03**: App works fully offline with no network dependencies
 
 ### UX
 
@@ -57,14 +57,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GEN-01 | Phase 1 | Pending |
-| GEN-02 | Phase 1 | Pending |
-| GEN-03 | Phase 1 | Pending |
-| GEN-04 | Phase 1 | Pending |
-| GEN-05 | Phase 1 | Pending |
+| GEN-01 | Phase 1 | Complete |
+| GEN-02 | Phase 1 | Complete |
+| GEN-03 | Phase 1 | Complete |
+| GEN-04 | Phase 1 | Complete |
+| GEN-05 | Phase 1 | Complete |
 | DIST-01 | Phase 1 | Pending |
 | DIST-02 | Phase 1 | Pending |
-| DIST-03 | Phase 1 | Pending |
+| DIST-03 | Phase 1 | Complete |
 | UX-01 | Phase 2 | Pending |
 | UX-02 | Phase 2 | Pending |
 
