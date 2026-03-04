@@ -1,0 +1,9 @@
+{
+  "identifier": "default",
+  "platforms": ["macOS", "windows"],
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "clipboard-manager:allow-write-text"
+  ]
+}
