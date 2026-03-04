@@ -1,0 +1,278 @@
+# Architecture Research
+
+**Domain:** Tauri desktop utility app (CUID2 generator)
+**Researched:** 2026-03-04
+**Confidence:** HIGH (official Tauri 2 docs, verified)
+
+## Standard Architecture
+
+### System Overview
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    WebView Process                            │
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │               Frontend (React/Svelte/Vanilla)          │  │
+│  │                                                        │  │
+│  │   ┌──────────────┐    ┌───────────────────────────┐    │  │
+│  │   │   UI Layer   │    │   @tauri-apps/api (JS)    │    │  │
+│  │   │  (HTML/CSS)  │    │   invoke(), writeText()   │    │  │
+│  │   └──────┬───────┘    └────────────┬──────────────┘    │  │
+│  └──────────┼────────────────────────┼───────────────────┘  │
+│             │ User Events            │ IPC calls             │
+├─────────────┼────────────────────────┼──────────────────────┤
+│             │     IPC Bridge         │                       │
+│             │  (tauri://ipc)         │                       │
+├─────────────┼────────────────────────┼──────────────────────┤
+│                    Core Process (Rust)                        │
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │              lib.rs — Command Handlers                 │  │
+│  │                                                        │  │
+│  │   ┌──────────────────┐   ┌─────────────────────────┐  │  │
+│  │   │  generate_cuid2  │   │  tauri-plugin-clipboard  │  │  │
+│  │   │   (#[command])   │   │  (write_text)            │  │  │
+│  │   └──────────────────┘   └─────────────────────────┘  │  │
+│  └────────────────────────────────────────────────────────┘  │
+│                                                              │
+│  ┌──────────────────────────────────────┐                    │
+│  │  tauri.conf.json + capabilities/     │                    │
+│  │  (permissions, window config)        │                    │
+│  └──────────────────────────────────────┘                    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Component Responsibilities
+
+| Component | Responsibility | Typical Implementation |
+|-----------|----------------|------------------------|
+| Frontend UI | Render button, display generated CUID2, trigger copy | HTML + CSS + minimal JS (or Svelte/React component) |
+| @tauri-apps/api (JS) | Bridge: call Rust commands, access clipboard plugin | `invoke()` for Rust commands, `writeText()` from clipboard plugin |
+| lib.rs command handlers | Generate CUID2 via Rust crate, return string to frontend | `#[tauri::command]` annotated functions |
+| tauri-plugin-clipboard-manager | Write CUID2 string to OS clipboard | Official Tauri plugin, requires capability grant |
+| tauri.conf.json | App metadata, window size, dev server, bundle settings | JSON config at compile time |
+| capabilities/ | Grant specific plugin permissions (clipboard write) | JSON capability files |
+
+## Recommended Project Structure
+
+```
+cuid-generator/
+├── package.json                    # Frontend dependencies + tauri CLI scripts
+├── index.html                      # Single-page app entry point
+├── src/                            # Frontend source code
+│   ├── main.ts                     # App bootstrap
+│   ├── App.svelte (or App.tsx)     # Root UI component
+│   └── styles.css                  # Global styles
+└── src-tauri/                      # Rust backend (do not confuse with src/)
+    ├── Cargo.toml                  # Rust deps: tauri, cuid2, clipboard plugin
+    ├── Cargo.lock
+    ├── build.rs                    # Tauri build script (boilerplate, rarely edited)
+    ├── tauri.conf.json             # App config: window size, identifier, bundle
+    ├── capabilities/
+    │   └── default.json            # Grant clipboard-manager:allow-write-text
+    ├── icons/                      # App icons (generated by tauri icon command)
+    └── src/
+        ├── main.rs                 # Desktop entry point — delegates to lib.rs
+        └── lib.rs                  # All command logic lives here
+```
+
+### Structure Rationale
+
+- **src/ vs src-tauri/src/:** The two `src` directories are separate concerns — frontend JS lives in `src/`, Rust backend in `src-tauri/src/`. Never mix them.
+- **lib.rs over main.rs:** Tauri best practice places all logic in `lib.rs`. `main.rs` is a thin wrapper — this ensures mobile entry point compatibility and cleaner testing.
+- **capabilities/default.json:** Explicit permission grants required by Tauri 2's security model. No capabilities = no access to OS features. For this app only `clipboard-manager:allow-write-text` is needed.
+- **Single-component frontend:** For a utility this small (one action, one display), a single `App` component is appropriate. No routing, no state management library needed.
+
+## Architectural Patterns
+
+### Pattern 1: Rust Command for ID Generation
+
+**What:** CUID2 generation runs in the Rust backend as a `#[tauri::command]` and returns the string to the frontend via IPC.
+**When to use:** Any computation that benefits from Rust's performance, security, or access to native Rust crates.
+**Trade-offs:** Slightly more boilerplate than pure JS, but the `cuid2` Rust crate is the authoritative implementation — more reliable than a JS port.
+
+**Example:**
+```rust
+// src-tauri/src/lib.rs
+use cuid2::create_id;
+
+#[tauri::command]
+fn generate_cuid() -> String {
+    create_id()
+}
+
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .invoke_handler(tauri::generate_handler![generate_cuid])
+        .run(tauri::generate_context!())
+        .expect("error running tauri application")
+}
+```
+
+```typescript
+// src/main.ts or App component
+import { invoke } from '@tauri-apps/api/core';
+
+const id = await invoke<string>('generate_cuid');
+```
+
+### Pattern 2: Clipboard via Official Plugin (not custom command)
+
+**What:** Use `@tauri-apps/plugin-clipboard-manager` for clipboard writes rather than writing a custom Rust command.
+**When to use:** Always — the official plugin handles OS-level clipboard access correctly on all target platforms and is maintained by the Tauri team.
+**Trade-offs:** Requires a capabilities grant and npm package install, but eliminates platform-specific clipboard code in Rust.
+
+**Example:**
+```typescript
+import { writeText } from '@tauri-apps/plugin-clipboard-manager';
+
+await writeText(generatedCuid);
+```
+
+```json
+// src-tauri/capabilities/default.json
+{
+  "identifier": "default",
+  "platforms": ["macOS", "windows"],
+  "permissions": [
+    "core:default",
+    "clipboard-manager:allow-write-text"
+  ]
+}
+```
+
+### Pattern 3: Stateless UI (no client-side state management library)
+
+**What:** For a single-action utility, hold the current CUID2 in a simple reactive variable (e.g., Svelte `$state`, React `useState`). No Zustand, no Pinia, no Redux.
+**When to use:** When the entire app state is one string. State management libraries add complexity without benefit here.
+**Trade-offs:** Works well at this scope; would need revisiting only if history/batch features were added later (both out of scope per PROJECT.md).
+
+## Data Flow
+
+### Generate + Copy Flow
+
+```
+User clicks "Generate"
+    ↓
+Frontend calls invoke('generate_cuid')
+    ↓
+IPC → Core Process → lib.rs generate_cuid()
+    ↓
+cuid2::create_id() returns String
+    ↓
+IPC response → Frontend receives String
+    ↓
+Frontend reactive state updates (displays CUID2)
+
+User clicks "Copy"
+    ↓
+Frontend calls writeText(currentCuid)         ← clipboard plugin JS API
+    ↓
+IPC → Core Process → clipboard plugin handler
+    ↓
+OS clipboard write (WKWebView/WebView2 native)
+    ↓
+Optional: frontend shows "Copied!" feedback
+```
+
+### State Management
+
+```
+Single reactive variable: currentCuid: string | null
+
+[Generate button click] → invoke() → [Rust command] → update currentCuid
+[Copy button click]     → writeText(currentCuid)     → OS clipboard
+```
+
+### Key Data Flows
+
+1. **ID generation:** Originates in Rust (authoritative cuid2 crate), travels over IPC to frontend as a plain JSON string. No transformation needed.
+2. **Clipboard write:** Originates in frontend (the string value), passes through clipboard plugin IPC to the OS. No round-trip to Rust command needed — plugin handles it directly.
+
+## Scaling Considerations
+
+This is a single-user desktop utility. Traditional scaling dimensions (users, requests/sec, data volume) do not apply. Relevant "scaling" concerns are feature additions:
+
+| Future Feature | Architecture Adjustment Needed |
+|----------------|-------------------------------|
+| History/log of IDs | Add in-memory Vec in Rust State<T>, expose via command |
+| Bulk generation | Command accepts count param, returns Vec<String> |
+| Settings persistence | Use tauri-plugin-store or tauri-plugin-sql |
+| Multiple ID formats | Route dispatch in Rust command based on format param |
+
+All of these are additive — the current architecture supports them without restructuring.
+
+## Anti-Patterns
+
+### Anti-Pattern 1: Putting CUID2 generation in the frontend
+
+**What people do:** Install a JS CUID2 library and generate IDs in the browser context.
+**Why it's wrong:** The canonical, actively-maintained CUID2 implementation is the Rust crate (`cuid2`). JS implementations may lag behind spec or have subtle differences. Also bypasses Rust entirely — no reason to use Tauri's backend at all.
+**Do this instead:** Define a `#[tauri::command]` that calls `cuid2::create_id()` in Rust.
+
+### Anti-Pattern 2: Writing clipboard logic as a custom Rust command
+
+**What people do:** Write a custom `#[tauri::command]` that calls OS clipboard APIs directly from Rust.
+**Why it's wrong:** Platform differences (macOS pasteboard vs Windows clipboard vs Linux X11/Wayland) are already handled by `tauri-plugin-clipboard-manager`. Rolling your own replicates solved work and risks platform bugs.
+**Do this instead:** Install `tauri-plugin-clipboard-manager`, grant `allow-write-text` capability, use `writeText()` from JS.
+
+### Anti-Pattern 3: Missing capability grants
+
+**What people do:** Register the clipboard plugin in `lib.rs` but forget to add the permission in `capabilities/default.json`.
+**Why it's wrong:** Tauri 2 has a deny-by-default permission model. Plugin initialization without capability grants silently fails at runtime — the call returns an error that is easy to miss without error handling in the frontend.
+**Do this instead:** Always add the corresponding `plugin-name:allow-*` entry to the capabilities file immediately when adding a plugin.
+
+### Anti-Pattern 4: Ignoring async/await on invoke
+
+**What people do:** Call `invoke()` without `await` and use the result synchronously.
+**Why it's wrong:** `invoke()` returns a Promise. Accessing the result before resolution produces `undefined`, leading to displaying an empty or stale CUID2.
+**Do this instead:** Always `await invoke()` inside an `async` function or use `.then()`. Handle the rejection case (`.catch()` or try/catch) to avoid silent failures.
+
+## Integration Points
+
+### External Services
+
+None. This app is fully offline — no external services, no network calls, no telemetry.
+
+### Internal Boundaries
+
+| Boundary | Communication | Notes |
+|----------|---------------|-------|
+| Frontend UI ↔ Rust core | Tauri IPC via `invoke()` | Type-safe: return type declared as generic on `invoke<string>()` |
+| Frontend UI ↔ Clipboard | Tauri IPC via clipboard plugin `writeText()` | Async Promise; requires capability grant in `capabilities/default.json` |
+| Rust core ↔ cuid2 crate | Direct Rust function call | No IPC; synchronous; no async needed for single ID generation |
+
+### Build Order (Component Dependencies)
+
+The following dependency order determines which components must be built first:
+
+```
+1. Rust project scaffold (src-tauri/)
+      ↓
+2. tauri.conf.json + capabilities/default.json
+      ↓
+3. lib.rs: generate_cuid command + clipboard plugin init
+      ↓
+4. Frontend: invoke() wiring + display
+      ↓
+5. Frontend: clipboard copy button + writeText()
+      ↓
+6. UI polish + window sizing
+```
+
+Steps 3 and 4 are tightly coupled — the command name used in `invoke('generate_cuid')` must match the Rust function name. Develop them together.
+
+## Sources
+
+- [Tauri Architecture | Tauri](https://v2.tauri.app/concept/architecture/) — HIGH confidence, official docs
+- [Process Model | Tauri](https://v2.tauri.app/concept/process-model/) — HIGH confidence, official docs
+- [Project Structure | Tauri](https://v2.tauri.app/start/project-structure/) — HIGH confidence, official docs
+- [Calling Rust from the Frontend | Tauri](https://v2.tauri.app/develop/calling-rust/) — HIGH confidence, official docs
+- [Clipboard Plugin | Tauri](https://v2.tauri.app/plugin/clipboard/) — HIGH confidence, official docs
+- [Inter-Process Communication | Tauri](https://v2.tauri.app/concept/inter-process-communication/) — HIGH confidence, official docs
+
+---
+*Architecture research for: Tauri desktop utility app (CUID2 generator)*
+*Researched: 2026-03-04*
